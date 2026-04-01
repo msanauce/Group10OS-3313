@@ -140,3 +140,40 @@ sys_setquota(void)
 
   return 0;
 }
+
+//global flag stuff
+extern int eco_mode;
+
+uint64
+sys_setecomode(void)
+{
+  int mode;
+
+  argint(0, &mode);
+
+  if(mode < 0 || mode > 4)
+    return -1;
+
+  eco_mode = mode;
+  return 0;
+}
+
+uint64
+sys_sleep(void)
+{
+  int n;
+  uint ticks0;
+
+  argint(0, &n);
+  acquire(&tickslock);
+  ticks0 = ticks;
+  while(ticks - ticks0 < n){
+    if(killed(myproc())){
+      release(&tickslock);
+      return -1;
+    }
+    sleep(&ticks, &tickslock);
+  }
+  release(&tickslock);
+  return 0;
+}
