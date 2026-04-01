@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "defs.h"
 
 struct cpu cpus[NCPU];
 
@@ -29,6 +30,62 @@ struct spinlock wait_lock;
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
+
+//lab addition
+int
+kps(char *arguments)
+{
+  struct proc *p;
+
+  // Map enum procstate -> readable string (same idea as procdump()).
+  static char *states[] = {
+    [UNUSED]    "unused",
+    [USED]      "used",
+    [SLEEPING]  "sleep",
+    [RUNNABLE]  "runble",
+    [RUNNING]   "run",
+    [ZOMBIE]    "zombie"
+  };
+
+  if (arguments == 0) {
+    printf("Usage: ps [-o | -l]\n");
+    return -1;
+  }
+
+  // "-o" => output only names
+  if (strncmp(arguments, "-o", 2) == 0 && arguments[2] == '\0') {
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state != UNUSED) {
+        printf("%s\n", p->name);
+      }
+      release(&p->lock);
+    }
+  }
+  // "-l" => detailed output
+  else if (strncmp(arguments, "-l", 2) == 0 && arguments[2] == '\0') {
+    printf("PID\tSTATE\tNAME\n");
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state != UNUSED) {
+        char *st = "unknown";
+        if (p->state >= 0 && p->state < NELEM(states) && states[p->state])
+          st = states[p->state];
+        printf("%d\t%s\t%s\n", p->pid, st, p->name);
+      }
+      release(&p->lock);
+    }
+  }
+  else {
+    printf("Usage: ps [-o | -l]\n");
+    return -1;
+  }
+
+  return 0;
+}
+
+
+
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
@@ -124,6 +181,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->waiting_tick = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -387,6 +445,7 @@ kwait(uint64 addr)
         havekids = 1;
         if(pp->state == ZOMBIE){
           // Found one.
+          printf("schedstats: pid=%d waiting_tick=%d\n", pp->pid, pp->waiting_tick);
           pid = pp->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
@@ -425,6 +484,7 @@ void
 scheduler(void)
 {
   struct proc *p;
+  struct proc *chosen;
   struct cpu *c = mycpu();
 
   c->proc = 0;
@@ -437,28 +497,61 @@ scheduler(void)
     intr_on();
     intr_off();
 
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+    chosen = 0;
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+    /* Step 3: select eligible schedtest child with minimum PID */
+    for(p = proc; p < &proc[NPROC]; p++){
+      acquire(&p->lock);
+
+      if(p->state == RUNNABLE &&
+        p->parent != 0 &&
+        strncmp(p->parent->name, "schedtest", 9) == 0)
+      {
+        if(chosen == 0 || p->pid < chosen->pid){
+          chosen = p;
+        }
+      }
+
+      release(&p->lock);
+    }
+
+    /* Fallback to default scheduling if no eligible child found */
+    if(chosen == 0){
+      for(p = proc; p < &proc[NPROC]; p++){
+        acquire(&p->lock);
+        if(p->state == RUNNABLE){
+          chosen = p;
+          release(&p->lock);
+          break;
+        }
+        release(&p->lock);
+      }
+    }
+
+    /* No runnable process */
+    if(chosen == 0){
+      asm volatile("wfi");
+      continue;
+    }
+
+    /* Step 2: increment waiting time for other RUNNABLE processes */
+    for(p = proc; p < &proc[NPROC]; p++){
+      acquire(&p->lock);
+      if(p->state == RUNNABLE && p != chosen){
+        p->waiting_tick++;
       }
       release(&p->lock);
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      asm volatile("wfi");
+
+    /* Run chosen process */
+    acquire(&chosen->lock);
+    if(chosen->state == RUNNABLE){
+      chosen->state = RUNNING;
+      c->proc = chosen;
+      swtch(&c->context, &chosen->context);
+      c->proc = 0;
     }
+    release(&chosen->lock);
   }
 }
 
@@ -467,7 +560,7 @@ scheduler(void)
 // intena because intena is a property of this
 // kernel thread, not this CPU. It should
 // be proc->intena and proc->noff, but that would
-// break in the few places where a lock is held but
+// break in the few paces where a lock is held but
 // there's no process.
 void
 sched(void)

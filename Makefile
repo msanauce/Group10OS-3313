@@ -137,6 +137,7 @@ UPROGS=\
 	$U/_mkdir\
 	$U/_rm\
 	$U/_sh\
+	$U/_hello_world\
 	$U/_stressfs\
 	$U/_usertests\
 	$U/_grind\
@@ -145,6 +146,10 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
+	$U/_ps\
+	$U/_good_pipe\
+	$U/_schedtest\
+
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

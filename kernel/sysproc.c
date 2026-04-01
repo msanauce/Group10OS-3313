@@ -7,6 +7,16 @@
 #include "proc.h"
 #include "vm.h"
 
+
+uint64
+sys_kps(void)
+{
+  char buf[4];               // enough for "-o" or "-l" + '\0' (and a bit extra)
+  if (argstr(0, buf, sizeof(buf)) < 0)
+    return -1;
+  return kps(buf);
+}
+
 uint64
 sys_exit(void)
 {
