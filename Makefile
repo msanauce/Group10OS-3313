@@ -149,6 +149,8 @@ UPROGS=\
 	$U/_ps\
 	$U/_good_pipe\
 	$U/_schedtest\
+	
+	
 
 
 fs.img: mkfs/mkfs README $(UPROGS)

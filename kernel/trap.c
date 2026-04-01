@@ -81,8 +81,23 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    if(eco_mode == ECO_QUOTA && p != 0){
+      acquire(&p->lock);
+      if(p->state == RUNNING){
+        p->cpu_used_in_window++;
+
+        if(p->cpu_used_in_window >= p->cpu_quota && p->throttled == 0){
+          p->throttled = 1;
+          p->quota_violations++;
+          printf("PID %d throttled at %d ticks\n", p->pid, p->cpu_used_in_window);
+        }
+      }
+      release(&p->lock);
+    }
+
     yield();
+  }
 
   prepare_return();
 

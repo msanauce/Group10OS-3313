@@ -7,6 +7,15 @@
 #include "defs.h"
 #include "defs.h"
 
+//--------Quota Stuff-----------------------
+
+#define WINDOW_SIZE 100
+
+uint quota_window_start = 0;
+int eco_mode = ECO_QUOTA;
+
+//------------------------------------------
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -182,6 +191,12 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->waiting_tick = 0;
+
+  // CPU quota defaults
+  p->cpu_quota = 20;
+  p->cpu_used_in_window = 0;
+  p->throttled = 0;
+  p->quota_violations = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -473,6 +488,39 @@ kwait(uint64 addr)
   }
 }
 
+//-------------------Quota Stuff---------------------------------------
+
+void
+reset_cpu_quotas(void)
+{
+  struct proc *p;
+
+  printf("Resetting quota window\n");q
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state != UNUSED) {
+      p->cpu_used_in_window = 0;
+      p->throttled = 0;
+    }
+    release(&p->lock);
+  }
+}
+
+void
+check_and_reset_quota_window(void)
+{
+  uint current_ticks;
+
+  acquire(&tickslock);
+  current_ticks = ticks;
+  release(&tickslock);
+
+  if(current_ticks - quota_window_start >= WINDOW_SIZE) {
+    quota_window_start = current_ticks;
+    reset_cpu_quotas();
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -497,6 +545,8 @@ scheduler(void)
     intr_on();
     intr_off();
 
+    check_and_reset_quota_window();
+
     chosen = 0;
 
     /* Step 3: select eligible schedtest child with minimum PID */
@@ -504,8 +554,9 @@ scheduler(void)
       acquire(&p->lock);
 
       if(p->state == RUNNABLE &&
-        p->parent != 0 &&
-        strncmp(p->parent->name, "schedtest", 9) == 0)
+         (eco_mode != ECO_QUOTA || p->throttled == 0) &&
+         p->parent != 0 &&
+         strncmp(p->parent->name, "schedtest", 9) == 0)
       {
         if(chosen == 0 || p->pid < chosen->pid){
           chosen = p;
@@ -519,7 +570,8 @@ scheduler(void)
     if(chosen == 0){
       for(p = proc; p < &proc[NPROC]; p++){
         acquire(&p->lock);
-        if(p->state == RUNNABLE){
+        if(p->state == RUNNABLE &&
+           (eco_mode != ECO_QUOTA || p->throttled == 0)){
           chosen = p;
           release(&p->lock);
           break;
@@ -537,7 +589,9 @@ scheduler(void)
     /* Step 2: increment waiting time for other RUNNABLE processes */
     for(p = proc; p < &proc[NPROC]; p++){
       acquire(&p->lock);
-      if(p->state == RUNNABLE && p != chosen){
+      if(p->state == RUNNABLE &&
+         p != chosen &&
+         (eco_mode != ECO_QUOTA || p->throttled == 0)){
         p->waiting_tick++;
       }
       release(&p->lock);
@@ -545,7 +599,8 @@ scheduler(void)
 
     /* Run chosen process */
     acquire(&chosen->lock);
-    if(chosen->state == RUNNABLE){
+    if(chosen->state == RUNNABLE &&
+       (eco_mode != ECO_QUOTA || chosen->throttled == 0)){
       chosen->state = RUNNING;
       c->proc = chosen;
       swtch(&c->context, &chosen->context);
@@ -781,3 +836,5 @@ procdump(void)
     printf("\n");
   }
 }
+
+

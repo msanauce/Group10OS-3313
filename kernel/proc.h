@@ -1,3 +1,6 @@
+#define ECO_OFF 0
+#define ECO_QUOTA 1
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -105,4 +108,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int cpu_quota;            // max CPU ticks allowed per window
+  int cpu_used_in_window;   // ticks used in current window
+  int throttled;            // 1 if process exceeded quota
+  int quota_violations;     // number of times quota was exceeded
 };

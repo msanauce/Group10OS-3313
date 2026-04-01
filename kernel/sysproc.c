@@ -117,3 +117,26 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//----------------------Quota Stuff--------------------------
+uint64
+sys_setquota(void)
+{
+  int quota;
+  struct proc *p = myproc();
+
+  argint(0, &quota);
+
+  if(quota <= 0)
+    return -1;
+
+  acquire(&p->lock);
+  p->cpu_quota = quota;
+
+  if(p->cpu_used_in_window < p->cpu_quota)
+    p->throttled = 0;
+
+  release(&p->lock);
+
+  return 0;
+}

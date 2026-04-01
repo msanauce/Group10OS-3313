@@ -182,5 +182,23 @@ void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
 
+
+// -------------- Quota Stuff------------------------------
+// quota helpers
+void reset_cpu_quotas(void);
+void check_and_reset_quota_window(void);
+
+// syscall
+uint64 sys_setquota(void);
+
+// globals from trap.c if needed
+extern uint ticks;
+extern struct spinlock tickslock;
+
+// eco mode globals
+extern int eco_mode;
+
+//---------------------------------------------------------
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
