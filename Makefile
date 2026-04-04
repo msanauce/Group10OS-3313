@@ -149,6 +149,8 @@ UPROGS=\
 	$U/_ps\
 	$U/_good_pipe\
 	$U/_schedtest\
+	$U/_quota_test\
+	$U/_eco_test\
 	
 	
 

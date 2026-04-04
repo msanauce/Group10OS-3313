@@ -8,6 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct eco_stats;
 
 // bio.c
 void            binit(void);
@@ -190,6 +191,9 @@ void check_and_reset_quota_window(void);
 
 // syscall
 uint64 sys_setquota(void);
+uint64 sys_getecostats(void);
+uint64 sys_setecomode(void);
+uint64 sys_getecomode(void);
 
 // globals from trap.c if needed
 extern uint ticks;

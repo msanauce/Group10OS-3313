@@ -6,6 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
+#include "eco.h"
 
 
 uint64
@@ -139,4 +140,47 @@ sys_setquota(void)
   release(&p->lock);
 
   return 0;
+}
+
+uint64
+sys_getecostats(void)
+{
+  uint64 addr;
+  struct proc *p = myproc();
+  struct eco_stats stats;
+
+  argaddr(0, &addr);
+
+  acquire(&p->lock);
+  stats.pid = p->pid;
+  stats.cpu_quota = p->cpu_quota;
+  stats.cpu_used_in_window = p->cpu_used_in_window;
+  stats.throttled = p->throttled;
+  stats.quota_violations = p->quota_violations;
+  stats.waiting_tick = p->waiting_tick;
+  release(&p->lock);
+
+  if(copyout(p->pagetable, addr, (char *)&stats, sizeof(stats)) < 0)
+    return -1;
+
+  return 0;
+}
+
+uint64
+sys_setecomode(void)
+{
+  int mode;
+
+  argint(0, &mode);
+  if(mode != ECO_OFF && mode != ECO_QUOTA)
+    return -1;
+
+  eco_mode = mode;
+  return 0;
+}
+
+uint64
+sys_getecomode(void)
+{
+  return eco_mode;
 }

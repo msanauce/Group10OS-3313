@@ -90,7 +90,6 @@ usertrap(void)
         if(p->cpu_used_in_window >= p->cpu_quota && p->throttled == 0){
           p->throttled = 1;
           p->quota_violations++;
-          printf("PID %d throttled at %d ticks\n", p->pid, p->cpu_used_in_window);
         }
       }
       release(&p->lock);
@@ -231,4 +230,3 @@ devintr()
     return 0;
   }
 }
-

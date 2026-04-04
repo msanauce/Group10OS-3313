@@ -103,6 +103,9 @@ extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_kps(void);
 extern uint64 sys_setquota(void); // Quota Stuff
+extern uint64 sys_getecostats(void);
+extern uint64 sys_setecomode(void);
+extern uint64 sys_getecomode(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -130,6 +133,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_kps]     sys_kps,
 [SYS_setquota] sys_setquota,
+[SYS_getecostats] sys_getecostats,
+[SYS_setecomode] sys_setecomode,
+[SYS_getecomode] sys_getecomode,
 };
 
 void

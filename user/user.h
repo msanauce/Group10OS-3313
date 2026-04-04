@@ -1,6 +1,7 @@
 #define SBRK_ERROR ((char *)-1)
 
 struct stat;
+struct eco_stats;
 
 // system calls
 int fork(void);
@@ -26,6 +27,9 @@ int pause(int);
 int uptime(void);
 int kps(char []);
 int setquota(int); // Quota Stuff
+int getecostats(struct eco_stats *);
+int setecomode(int);
+int getecomode(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

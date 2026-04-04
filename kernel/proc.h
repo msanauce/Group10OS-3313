@@ -1,5 +1,4 @@
-#define ECO_OFF 0
-#define ECO_QUOTA 1
+#include "eco.h"
 
 // Saved registers for kernel context switches.
 struct context {

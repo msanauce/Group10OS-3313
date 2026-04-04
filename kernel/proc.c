@@ -460,7 +460,6 @@ kwait(uint64 addr)
         havekids = 1;
         if(pp->state == ZOMBIE){
           // Found one.
-          printf("schedstats: pid=%d waiting_tick=%d\n", pp->pid, pp->waiting_tick);
           pid = pp->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
@@ -495,7 +494,6 @@ reset_cpu_quotas(void)
 {
   struct proc *p;
 
-  printf("Resetting quota window\n");q
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state != UNUSED) {
@@ -836,5 +834,3 @@ procdump(void)
     printf("\n");
   }
 }
-
-

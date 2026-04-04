@@ -44,3 +44,6 @@ entry("pause");
 entry("uptime");
 entry("kps");
 entry("setquota");
+entry("getecostats");
+entry("setecomode");
+entry("getecomode");
