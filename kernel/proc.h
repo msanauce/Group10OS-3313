@@ -114,4 +114,14 @@ struct proc {
   int quota_violations;     // number of times quota was exceeded
   int context_switches;      //number of times CPU control transfered from scheduler to a process (process dispatched from scheduler)
   int slice_ticks;          //how long process has been holding cpu since scheduled
+
+  // Eco metrics
+  uint cpu_ticks;         // ticks spent RUNNING
+  uint sleep_ticks;       // ticks spent SLEEPING
+  uint runnable_ticks;    // ticks spent RUNNABLE
+  uint times_scheduled;   // number of times scheduler chose this proc
+  uint wakeup_count;      // number of times process was woken up
+  uint short_sleep_count; // number of short sleeps (ex: <= 2 ticks)
+  uint sleep_start_tick;  // global tick count when process went to sleep
+  int eco_score;          // computed eco score
 };

@@ -5,7 +5,6 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "defs.h"
 
 //--------Quota Stuff-----------------------
 
@@ -13,6 +12,9 @@
 
 uint quota_window_start = 0;
 int eco_mode = ECO_OFF;
+
+
+
 
 
 struct cpu cpus[NCPU];
@@ -39,13 +41,12 @@ struct spinlock wait_lock;
 // Map it high in memory, followed by an invalid
 // guard page.
 
-//lab addition
+
 int
 kps(char *arguments)
 {
   struct proc *p;
 
-  // Map enum procstate -> readable string (same idea as procdump()).
   static char *states[] = {
     [UNUSED]    "unused",
     [USED]      "used",
@@ -60,7 +61,6 @@ kps(char *arguments)
     return -1;
   }
 
-  // "-o" => output only names
   if (strncmp(arguments, "-o", 2) == 0 && arguments[2] == '\0') {
     for (p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
@@ -70,7 +70,6 @@ kps(char *arguments)
       release(&p->lock);
     }
   }
-  // "-l" => detailed output
   else if (strncmp(arguments, "-l", 2) == 0 && arguments[2] == '\0') {
     printf("PID\tSTATE\tNAME\n");
     for (p = proc; p < &proc[NPROC]; p++) {
@@ -92,6 +91,25 @@ kps(char *arguments)
   return 0;
 }
 
+//eco metrics helper:
+void
+update_process_metrics_on_tick(void)
+{
+  struct proc *p;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state == RUNNING)
+      p->cpu_ticks++;
+    else if(p->state == SLEEPING)
+      p->sleep_ticks++;
+    else if(p->state == RUNNABLE){
+      p->runnable_ticks++;
+      p->waiting_tick++;
+    }
+    release(&p->lock);
+  }
+}
 
 
 void
@@ -201,6 +219,16 @@ found:
   p->context_switches = 0;
   p->slice_ticks = 0;
 
+  //Eco scheduling defaults
+  p->cpu_ticks = 0;
+  p->sleep_ticks = 0;
+  p->runnable_ticks = 0;
+  p->times_scheduled = 0;
+  p->wakeup_count = 0;
+  p->short_sleep_count = 0;
+  p->sleep_start_tick = 0;
+  p->eco_score = 0;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -247,6 +275,17 @@ freeproc(struct proc *p)
   p->state = UNUSED;
   p->context_switches = 0;
   p->slice_ticks = 0;
+  p->waiting_tick = 0;
+
+  //eco scheduler stuff
+  p->cpu_ticks = 0;
+  p->sleep_ticks = 0;
+  p->runnable_ticks = 0;
+  p->times_scheduled = 0;
+  p->wakeup_count = 0;
+  p->short_sleep_count = 0;
+  p->sleep_start_tick = 0;
+  p->eco_score = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -524,6 +563,60 @@ check_and_reset_quota_window(void)
   }
 }
 
+//calculating the eco score
+static int
+compute_eco_score(struct proc *p)
+{
+  int score = 100;
+
+  // Treat active CPU time as the primary energy proxy.
+  // Keep the other sustainability metrics for future policies,
+  // but use waiting and scheduling pressure to preserve fairness now.
+  score += (int)p->runnable_ticks;
+  score += (int)(p->waiting_tick / 2);
+  score -= (int)(4 * p->cpu_ticks);
+  score -= (int)p->times_scheduled;
+  score -= (int)(2 * p->short_sleep_count);
+
+  if(score < 0)
+    score = 0;
+
+  return score;
+}
+
+
+//pick eco mode scheduler:
+static struct proc*
+pick_eco_process(void)
+{
+  struct proc *p;
+  struct proc *best = 0;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+
+    if(p->state == RUNNABLE){
+      p->eco_score = compute_eco_score(p);
+
+      if(best == 0 ||
+         p->eco_score > best->eco_score ||
+         (p->eco_score == best->eco_score &&
+          p->times_scheduled < best->times_scheduled)){
+        if(best != 0)
+          release(&best->lock);
+        best = p;   // keep this lock
+      } else {
+        release(&p->lock);
+      }
+    } else {
+      release(&p->lock);
+    }
+  }
+
+  return best;   // if not 0, lock is still held
+}
+
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -534,76 +627,52 @@ check_and_reset_quota_window(void)
 void
 scheduler(void)
 {
-  struct proc *p;
   struct proc *chosen;
+  struct proc *p;
   struct cpu *c = mycpu();
+  static int last_index = 0;
+  int start;
+  int offset;
 
   c->proc = 0;
   for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting. Then turn them back off
-    // to avoid a possible race between an interrupt
-    // and wfi.
     intr_on();
     intr_off();
 
-    check_and_reset_quota_window();
+    if(eco_mode == ECO_QUOTA){
+      check_and_reset_quota_window();
+    }
 
     chosen = 0;
 
-    /* Step 3: select eligible schedtest child with minimum PID */
-    for(p = proc; p < &proc[NPROC]; p++){
-      acquire(&p->lock);
-
-      if(p->state == RUNNABLE &&
-         (eco_mode != ECO_QUOTA || p->throttled == 0) &&
-         p->parent != 0 &&
-         strncmp(p->parent->name, "schedtest", 9) == 0)
-      {
-        if(chosen == 0 || p->pid < chosen->pid){
-          chosen = p;
-        }
-      }
-
-      release(&p->lock);
-    }
-
-    /* Fallback to default scheduling if no eligible child found */
-    if(chosen == 0){
-      for(p = proc; p < &proc[NPROC]; p++){
+    if(eco_mode == ECO_SCHED){
+      chosen = pick_eco_process();
+    } else {
+      // Baseline path: rotate the scan start so RUNNABLE processes
+      // take turns instead of always favoring the earliest slot.
+      start = last_index;
+      for(offset = 0; offset < NPROC; offset++){
+        p = &proc[(start + offset) % NPROC];
         acquire(&p->lock);
         if(p->state == RUNNABLE &&
            (eco_mode != ECO_QUOTA || p->throttled == 0)){
           chosen = p;
-          release(&p->lock);
-          break;
+          last_index = ((int)(p - proc) + 1) % NPROC;
+          break;   // keep lock held
         }
         release(&p->lock);
       }
     }
 
-    /* No runnable process */
     if(chosen == 0){
       asm volatile("wfi");
       continue;
     }
 
-    /* Step 2: increment waiting time for other RUNNABLE processes */
-    for(p = proc; p < &proc[NPROC]; p++){
-      acquire(&p->lock);
-      if(p->state == RUNNABLE &&
-         p != chosen &&
-         (eco_mode != ECO_QUOTA || p->throttled == 0)){
-        p->waiting_tick++;
-      }
-      release(&p->lock);
-    }
+    chosen->times_scheduled++;
+    
 
-    /* Run chosen process */
-    acquire(&chosen->lock);
-    if(chosen->state == RUNNABLE &&
-       (eco_mode != ECO_QUOTA || chosen->throttled == 0)){
+    if(chosen->state == RUNNABLE){
       chosen->state = RUNNING;
       chosen->context_switches++;//when scheduler gives cpu the process, its a context switch
       chosen->slice_ticks = 0;
@@ -611,6 +680,7 @@ scheduler(void)
       swtch(&c->context, &chosen->context);
       c->proc = 0;
     }
+
     release(&chosen->lock);
   }
 }
@@ -713,6 +783,11 @@ sleep(void *chan, struct spinlock *lk)
   p->state = SLEEPING;
   p->slice_ticks = 0;
 
+  //ECO METRICS UPDATE
+  acquire(&tickslock);
+  p->sleep_start_tick = ticks;
+  release(&tickslock);
+
   sched();
 
   // Tidy up.
@@ -735,6 +810,13 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        // wakeup(&ticks) is called while tickslock is already held
+        // from clockintr(), so don't re-acquire it here.
+        uint duration = ticks - p->sleep_start_tick;
+
+        p->wakeup_count++;
+        if(duration <= 2)
+          p->short_sleep_count++;
       }
       release(&p->lock);
     }

@@ -188,6 +188,7 @@ void            virtio_disk_intr(void);
 // quota helpers
 void reset_cpu_quotas(void);
 void check_and_reset_quota_window(void);
+void update_process_metrics_on_tick(void);
 
 // syscall
 uint64 sys_setquota(void);

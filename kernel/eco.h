@@ -2,13 +2,14 @@
 #define XV6_ECO_H
 
 #define ECO_OFF 0
-#define ECO_QUOTA 1
-#define ECO_CONTEXTSW 2
+#define ECO_SCHED 1
+#define ECO_QUOTA 2
+#define ECO_CONTEXTSW 3
 #define ECO_SLEEP_STRETCH 4
 
-//switch values for adaptive slice based on churn
+// switch values for adaptive slice based on churn
 #define ECO_LOW_SLICE 3
-#define ECO_HIGH_SLICE 6 
+#define ECO_HIGH_SLICE 6
 #define ECO_CHURN_THRESHOLD 150
 
 struct eco_stats {
