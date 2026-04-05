@@ -151,6 +151,7 @@ UPROGS=\
 	$U/_schedtest\
 	$U/_quota_test\
 	$U/_eco_test\
+	$U/_contextsw_test\
 	
 	
 

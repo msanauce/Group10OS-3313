@@ -158,6 +158,7 @@ sys_getecostats(void)
   stats.throttled = p->throttled;
   stats.quota_violations = p->quota_violations;
   stats.waiting_tick = p->waiting_tick;
+  stats.context_switches = p->context_switches;
   release(&p->lock);
 
   if(copyout(p->pagetable, addr, (char *)&stats, sizeof(stats)) < 0)
@@ -172,7 +173,7 @@ sys_setecomode(void)
   int mode;
 
   argint(0, &mode);
-  if(mode != ECO_OFF && mode != ECO_QUOTA)
+  if(mode != ECO_OFF && mode != ECO_QUOTA && mode != ECO_CONTEXTSW)
     return -1;
 
   eco_mode = mode;

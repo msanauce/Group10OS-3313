@@ -81,7 +81,7 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2){
+  /*if(which_dev == 2){
     if(eco_mode == ECO_QUOTA && p != 0){
       acquire(&p->lock);
       if(p->state == RUNNING){
@@ -96,7 +96,59 @@ usertrap(void)
     }
 
     yield();
+  }*/
+    // give up the CPU if this is a timer interrupt.
+  if(which_dev == 2){
+  int should_yield = 1;
+
+  if(p != 0){
+    acquire(&p->lock);
+
+    if(p->state == RUNNING){
+
+      // ---- QUOTA ----
+      if(eco_mode == ECO_QUOTA){
+        p->cpu_used_in_window++;
+
+        if(p->cpu_used_in_window >= p->cpu_quota && p->throttled == 0){
+          p->throttled = 1;
+          p->quota_violations++;
+        }
+      }
+
+      // ---- CONTEXT SWITCH MODE ----
+      if(eco_mode == ECO_CONTEXTSW){
+
+        int slice_limit;
+
+        if(p->context_switches > ECO_CHURN_THRESHOLD){
+          slice_limit = ECO_HIGH_SLICE;
+        } else {
+          slice_limit = ECO_LOW_SLICE;
+        }
+
+        p->slice_ticks++;
+
+        if(p->slice_ticks < slice_limit){
+          should_yield = 0;
+        } else {
+          p->slice_ticks = 0;
+          should_yield = 1;
+        }
+
+      } else {
+        // IMPORTANT: reset when NOT in context mode
+        p->slice_ticks = 0;
+        should_yield = 1;
+      }
+    }
+
+    release(&p->lock);
   }
+
+  if(should_yield)
+    yield();
+}
 
   prepare_return();
 

@@ -3,6 +3,12 @@
 
 #define ECO_OFF 0
 #define ECO_QUOTA 1
+#define ECO_CONTEXTSW 2
+
+//switch values for adaptive slice based on churn
+#define ECO_LOW_SLICE 3
+#define ECO_HIGH_SLICE 6 
+#define ECO_CHURN_THRESHOLD 150
 
 struct eco_stats {
   int pid;
@@ -11,6 +17,7 @@ struct eco_stats {
   int throttled;
   int quota_violations;
   int waiting_tick;
+  int context_switches;
 };
 
 #endif

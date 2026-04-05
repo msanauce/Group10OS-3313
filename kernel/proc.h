@@ -112,4 +112,6 @@ struct proc {
   int cpu_used_in_window;   // ticks used in current window
   int throttled;            // 1 if process exceeded quota
   int quota_violations;     // number of times quota was exceeded
+  int context_switches;      //number of times CPU control transfered from scheduler to a process (process dispatched from scheduler)
+  int slice_ticks;          //how long process has been holding cpu since scheduled
 };

@@ -14,7 +14,6 @@
 uint quota_window_start = 0;
 int eco_mode = ECO_QUOTA;
 
-//------------------------------------------
 
 struct cpu cpus[NCPU];
 
@@ -198,6 +197,10 @@ found:
   p->throttled = 0;
   p->quota_violations = 0;
 
+  //context switch defaults
+  p->context_switches = 0;
+  p->slice_ticks = 0;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -242,6 +245,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->context_switches = 0;
+  p->slice_ticks = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -600,6 +605,8 @@ scheduler(void)
     if(chosen->state == RUNNABLE &&
        (eco_mode != ECO_QUOTA || chosen->throttled == 0)){
       chosen->state = RUNNING;
+      chosen->context_switches++;//when scheduler gives cpu the process, its a context switch
+      chosen->slice_ticks = 0;
       c->proc = chosen;
       swtch(&c->context, &chosen->context);
       c->proc = 0;
@@ -641,6 +648,7 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  p->slice_ticks = 0;//reset slice when process voluntarily gives up cpu
   p->state = RUNNABLE;
   sched();
   release(&p->lock);
@@ -703,6 +711,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  p->slice_ticks = 0;
 
   sched();
 
