@@ -8,6 +8,9 @@
 #include "vm.h"
 #include "eco.h"
 
+static int stretched_sleep_calls;
+static int total_extra_sleep_ticks;
+
 
 uint64
 sys_kps(void)
@@ -79,14 +82,21 @@ uint64
 sys_pause(void)
 {
   int n;
+  int actual_ticks;
   uint ticks0;
 
   argint(0, &n);
   if(n < 0)
     n = 0;
+  actual_ticks = n;
   acquire(&tickslock);
+  if(eco_mode == ECO_SLEEP_STRETCH){
+    actual_ticks = n + 3;
+    stretched_sleep_calls++;
+    total_extra_sleep_ticks += 3;
+  }
   ticks0 = ticks;
-  while(ticks - ticks0 < n){
+  while(ticks - ticks0 < actual_ticks){
     if(killed(myproc())){
       release(&tickslock);
       return -1;
@@ -161,6 +171,13 @@ sys_getecostats(void)
   stats.context_switches = p->context_switches;
   release(&p->lock);
 
+  // Sleep-stretch metrics are global for demo simplicity, so every process
+  // sees the same aggregated values here.
+  acquire(&tickslock);
+  stats.stretched_sleep_calls = stretched_sleep_calls;
+  stats.total_extra_sleep_ticks = total_extra_sleep_ticks;
+  release(&tickslock);
+
   if(copyout(p->pagetable, addr, (char *)&stats, sizeof(stats)) < 0)
     return -1;
 
@@ -173,7 +190,8 @@ sys_setecomode(void)
   int mode;
 
   argint(0, &mode);
-  if(mode != ECO_OFF && mode != ECO_QUOTA && mode != ECO_CONTEXTSW)
+  if(mode != ECO_OFF && mode != ECO_QUOTA &&
+     mode != ECO_CONTEXTSW && mode != ECO_SLEEP_STRETCH)
     return -1;
 
   eco_mode = mode;

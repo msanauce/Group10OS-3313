@@ -12,7 +12,7 @@
 #define WINDOW_SIZE 100
 
 uint quota_window_start = 0;
-int eco_mode = ECO_QUOTA;
+int eco_mode = ECO_OFF;
 
 
 struct cpu cpus[NCPU];

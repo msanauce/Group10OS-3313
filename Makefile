@@ -149,9 +149,12 @@ UPROGS=\
 	$U/_ps\
 	$U/_good_pipe\
 	$U/_schedtest\
+	$U/_setecomode\
 	$U/_quota_test\
 	$U/_eco_test\
 	$U/_contextsw_test\
+	$U/_sleepdemo\
+	$U/_ecostats\
 	
 	
 

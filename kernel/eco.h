@@ -4,6 +4,7 @@
 #define ECO_OFF 0
 #define ECO_QUOTA 1
 #define ECO_CONTEXTSW 2
+#define ECO_SLEEP_STRETCH 4
 
 //switch values for adaptive slice based on churn
 #define ECO_LOW_SLICE 3
@@ -18,6 +19,8 @@ struct eco_stats {
   int quota_violations;
   int waiting_tick;
   int context_switches;
+  int stretched_sleep_calls;
+  int total_extra_sleep_ticks;
 };
 
 #endif
