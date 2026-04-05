@@ -112,4 +112,15 @@ struct proc {
   int cpu_used_in_window;   // ticks used in current window
   int throttled;            // 1 if process exceeded quota
   int quota_violations;     // number of times quota was exceeded
+
+  // Eco metrics
+  uint cpu_ticks;         // ticks spent RUNNING
+  uint sleep_ticks;       // ticks spent SLEEPING
+  uint runnable_ticks;    // ticks spent RUNNABLE
+  uint times_scheduled;   // number of times scheduler chose this proc
+  uint wakeup_count;      // number of times process was woken up
+  uint short_sleep_count; // number of short sleeps (ex: <= 2 ticks)
+  uint sleep_start_tick;  // global tick count when process went to sleep
+  int eco_score;          // computed eco score
+
 };

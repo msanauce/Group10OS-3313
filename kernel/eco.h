@@ -2,7 +2,8 @@
 #define XV6_ECO_H
 
 #define ECO_OFF 0
-#define ECO_QUOTA 1
+#define ECO_SCHED 1
+#define ECO_QUOTA 2
 
 struct eco_stats {
   int pid;

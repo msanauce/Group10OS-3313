@@ -172,7 +172,7 @@ sys_setecomode(void)
   int mode;
 
   argint(0, &mode);
-  if(mode != ECO_OFF && mode != ECO_QUOTA)
+  if(mode != ECO_OFF && mode != ECO_SCHED && mode != ECO_QUOTA)
     return -1;
 
   eco_mode = mode;

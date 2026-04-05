@@ -183,6 +183,7 @@ clockintr()
     ticks++;
     wakeup(&ticks);
     release(&tickslock);
+    update_process_metrics_on_tick();
   }
 
   // ask for the next timer interrupt. this also clears
