@@ -860,16 +860,13 @@ check_and_reset_quota_window(void)
 static int
 compute_eco_score(struct proc *p)
 {
-  int score = 100;
+  int score = 1000;
 
-  // Treat active CPU time as the primary energy proxy.
-  // Keep the other sustainability metrics for future policies,
-  // but use waiting and scheduling pressure to preserve fairness now.
-  score += (int)p->runnable_ticks;
-  score += (int)(p->waiting_tick / 2);
-  score -= (int)(4 * p->cpu_ticks);
-  score -= (int)p->times_scheduled;
-  score -= (int)(2 * p->short_sleep_count);
+  // A simple eco score: penalize sustained CPU use,
+  // but keep some aging so waiting/sleeping tasks still make progress.
+  score -= (int)(5 * p->cpu_ticks);
+  score += (int)p->waiting_tick;
+  score += (int)(2 * p->sleep_ticks);
 
   if(score < 0)
     score = 0;

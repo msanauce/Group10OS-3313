@@ -159,6 +159,8 @@ UPROGS=\
 	$U/_cpuburn\
 	$U/_bgexec\
 	$U/_bgburn\
+	$U/_hog\
+	$U/_burst\
 	
 	
 
