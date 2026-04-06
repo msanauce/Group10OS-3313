@@ -155,6 +155,10 @@ UPROGS=\
 	$U/_contextsw_test\
 	$U/_sleepdemo\
 	$U/_ecostats\
+	$U/_ecoidle\
+	$U/_cpuburn\
+	$U/_bgexec\
+	$U/_bgburn\
 	
 	
 

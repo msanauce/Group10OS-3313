@@ -18,8 +18,17 @@ main(void)
   printf("cpu_used_in_window %d\n", stats.cpu_used_in_window);
   printf("throttled %d\n", stats.throttled);
   printf("quota_violations %d\n", stats.quota_violations);
+  printf("eco_background %d\n", stats.eco_background);
+  printf("background_deferrals %d\n", stats.background_deferrals);
   printf("waiting_tick %d\n", stats.waiting_tick);
   printf("context_switches %d\n", stats.context_switches);
+  printf("cpu_ticks %d\n", stats.cpu_ticks);
+  printf("sleep_ticks %d\n", stats.sleep_ticks);
+  printf("runnable_ticks %d\n", stats.runnable_ticks);
+  printf("times_scheduled %d\n", stats.times_scheduled);
+  printf("wakeup_count %d\n", stats.wakeup_count);
+  printf("short_sleep_count %d\n", stats.short_sleep_count);
+  printf("eco_score %d\n", stats.eco_score);
   printf("stretched_sleep_calls %d\n", stats.stretched_sleep_calls);
   printf("total_extra_sleep_ticks %d\n", stats.total_extra_sleep_ticks);
 

@@ -106,6 +106,9 @@ extern uint64 sys_setquota(void); // Quota Stuff
 extern uint64 sys_getecostats(void);
 extern uint64 sys_setecomode(void);
 extern uint64 sys_getecomode(void);
+extern uint64 sys_getecoidlestats(void);
+extern uint64 sys_resetecoidle(void);
+extern uint64 sys_setbackground(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -136,6 +139,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getecostats] sys_getecostats,
 [SYS_setecomode] sys_setecomode,
 [SYS_getecomode] sys_getecomode,
+[SYS_getecoidlestats] sys_getecoidlestats,
+[SYS_resetecoidle] sys_resetecoidle,
+[SYS_setbackground] sys_setbackground,
 };
 
 void

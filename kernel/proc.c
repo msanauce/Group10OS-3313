@@ -13,6 +13,17 @@
 uint quota_window_start = 0;
 int eco_mode = ECO_OFF;
 
+struct eco_idle_cpu_state {
+  uint total_idle_ticks;
+  uint idle_intervals;
+  uint longest_idle_streak;
+  uint idle_start_tick;
+  int is_idle;
+};
+
+static struct eco_idle_cpu_state eco_idle_cpus[NCPU];
+static struct spinlock eco_idle_lock;
+static int eco_idle_max_cpu_seen;
 
 
 
@@ -36,6 +47,244 @@ extern char trampoline[]; // trampoline.S
 // memory model when using p->parent.
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
+
+static struct proc*
+pick_round_robin_process(int start, int *next_index)
+{
+  struct proc *p;
+  int offset;
+
+  for(offset = 0; offset < NPROC; offset++){
+    p = &proc[(start + offset) % NPROC];
+    acquire(&p->lock);
+    if(p->state == RUNNABLE &&
+       (eco_mode != ECO_QUOTA || p->throttled == 0)){
+      *next_index = ((int)(p - proc) + 1) % NPROC;
+      return p;
+    }
+    release(&p->lock);
+  }
+
+  return 0;
+}
+
+static int
+eco_background_pressure_threshold(void)
+{
+  int tracked_cpus;
+
+  acquire(&eco_idle_lock);
+  tracked_cpus = eco_idle_max_cpu_seen + 1;
+  if(tracked_cpus < 1)
+    tracked_cpus = 1;
+  release(&eco_idle_lock);
+
+  if(tracked_cpus <= 1)
+    return 1;
+  return tracked_cpus - 1;
+}
+
+static void
+note_background_deferral(int proc_index)
+{
+  struct proc *p;
+
+  if(proc_index < 0 || proc_index >= NPROC)
+    return;
+
+  p = &proc[proc_index];
+  acquire(&p->lock);
+  if(p->state == RUNNABLE && p->eco_background)
+    p->background_deferrals++;
+  release(&p->lock);
+}
+
+static struct proc*
+pick_round_robin_process_eco(int start, int *next_index)
+{
+  int offset;
+  int first_runnable = -1;
+  int first_foreground = -1;
+  int first_background = -1;
+  int active_foreground = 0;
+  int chosen_index;
+  int threshold = eco_background_pressure_threshold();
+  struct proc *p;
+
+  for(offset = 0; offset < NPROC; offset++){
+    int idx = (start + offset) % NPROC;
+
+    p = &proc[idx];
+    acquire(&p->lock);
+    if((p->state == RUNNABLE || p->state == RUNNING) &&
+       (eco_mode != ECO_QUOTA || p->throttled == 0)){
+      if(p->eco_background == 0)
+        active_foreground++;
+    }
+
+    if(p->state == RUNNABLE &&
+       (eco_mode != ECO_QUOTA || p->throttled == 0)){
+      if(first_runnable < 0)
+        first_runnable = idx;
+      if(p->eco_background){
+        if(first_background < 0)
+          first_background = idx;
+      } else {
+        if(first_foreground < 0)
+          first_foreground = idx;
+      }
+    }
+    release(&p->lock);
+  }
+
+  if(first_runnable < 0)
+    return 0;
+
+  chosen_index = first_runnable;
+  if(first_background >= 0 &&
+     active_foreground >= threshold){
+    note_background_deferral(first_background);
+    if(first_foreground >= 0)
+      chosen_index = first_foreground;
+    else
+      return 0;
+  }
+
+  p = &proc[chosen_index];
+  acquire(&p->lock);
+  if(p->state == RUNNABLE &&
+     (eco_mode != ECO_QUOTA || p->throttled == 0)){
+    *next_index = (chosen_index + 1) % NPROC;
+    return p;
+  }
+  release(&p->lock);
+
+  return pick_round_robin_process(start, next_index);
+}
+
+static void
+eco_idle_mark_cpu(int cpu_id)
+{
+  acquire(&eco_idle_lock);
+  if(cpu_id > eco_idle_max_cpu_seen)
+    eco_idle_max_cpu_seen = cpu_id;
+  release(&eco_idle_lock);
+}
+
+static void
+eco_idle_enter(int cpu_id)
+{
+  uint current_ticks;
+
+  acquire(&tickslock);
+  current_ticks = ticks;
+  release(&tickslock);
+
+  acquire(&eco_idle_lock);
+  if(cpu_id > eco_idle_max_cpu_seen)
+    eco_idle_max_cpu_seen = cpu_id;
+  if(eco_idle_cpus[cpu_id].is_idle == 0){
+    eco_idle_cpus[cpu_id].is_idle = 1;
+    eco_idle_cpus[cpu_id].idle_intervals++;
+    eco_idle_cpus[cpu_id].idle_start_tick = current_ticks;
+  }
+  release(&eco_idle_lock);
+}
+
+static void
+eco_idle_exit(int cpu_id)
+{
+  uint current_ticks;
+  uint duration;
+
+  acquire(&tickslock);
+  current_ticks = ticks;
+  release(&tickslock);
+
+  acquire(&eco_idle_lock);
+  if(cpu_id > eco_idle_max_cpu_seen)
+    eco_idle_max_cpu_seen = cpu_id;
+  if(eco_idle_cpus[cpu_id].is_idle){
+    duration = current_ticks - eco_idle_cpus[cpu_id].idle_start_tick;
+    eco_idle_cpus[cpu_id].total_idle_ticks += duration;
+    if(duration > eco_idle_cpus[cpu_id].longest_idle_streak)
+      eco_idle_cpus[cpu_id].longest_idle_streak = duration;
+    eco_idle_cpus[cpu_id].is_idle = 0;
+    eco_idle_cpus[cpu_id].idle_start_tick = current_ticks;
+  }
+  release(&eco_idle_lock);
+}
+
+void
+get_eco_idle_stats(struct eco_idle_stats *stats)
+{
+  int i;
+  uint current_ticks;
+  uint total_idle_ticks = 0;
+  uint idle_intervals = 0;
+  uint longest_idle_streak = 0;
+  int current_idle_cpus = 0;
+  int tracked_cpus;
+
+  acquire(&tickslock);
+  current_ticks = ticks;
+  release(&tickslock);
+
+  acquire(&eco_idle_lock);
+  tracked_cpus = eco_idle_max_cpu_seen + 1;
+  if(tracked_cpus < 1)
+    tracked_cpus = 1;
+  for(i = 0; i < tracked_cpus; i++){
+    uint cpu_idle_ticks = eco_idle_cpus[i].total_idle_ticks;
+    uint cpu_longest = eco_idle_cpus[i].longest_idle_streak;
+
+    if(eco_idle_cpus[i].is_idle){
+      uint live_duration = current_ticks - eco_idle_cpus[i].idle_start_tick;
+      cpu_idle_ticks += live_duration;
+      if(live_duration > cpu_longest)
+        cpu_longest = live_duration;
+      current_idle_cpus++;
+    }
+
+    total_idle_ticks += cpu_idle_ticks;
+    idle_intervals += eco_idle_cpus[i].idle_intervals;
+    if(cpu_longest > longest_idle_streak)
+      longest_idle_streak = cpu_longest;
+  }
+  release(&eco_idle_lock);
+
+  stats->cpus_tracked = tracked_cpus;
+  stats->current_idle_cpus = current_idle_cpus;
+  stats->idle_intervals = idle_intervals;
+  stats->total_idle_ticks = total_idle_ticks;
+  stats->longest_idle_streak = longest_idle_streak;
+  stats->uptime_ticks = current_ticks;
+}
+
+void
+reset_eco_idle_stats(void)
+{
+  int i;
+  uint current_ticks;
+
+  acquire(&tickslock);
+  current_ticks = ticks;
+  release(&tickslock);
+
+  acquire(&eco_idle_lock);
+  for(i = 0; i < NCPU; i++){
+    eco_idle_cpus[i].total_idle_ticks = 0;
+    eco_idle_cpus[i].idle_intervals = 0;
+    eco_idle_cpus[i].longest_idle_streak = 0;
+    if(eco_idle_cpus[i].is_idle){
+      eco_idle_cpus[i].idle_intervals = 1;
+      eco_idle_cpus[i].idle_start_tick = current_ticks;
+    } else {
+      eco_idle_cpus[i].idle_start_tick = 0;
+    }
+  }
+  release(&eco_idle_lock);
+}
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -134,6 +383,8 @@ procinit(void)
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+  initlock(&eco_idle_lock, "eco_idle");
+  eco_idle_max_cpu_seen = 0;
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
@@ -214,6 +465,8 @@ found:
   p->cpu_used_in_window = 0;
   p->throttled = 0;
   p->quota_violations = 0;
+  p->eco_background = 0;
+  p->background_deferrals = 0;
 
   //context switch defaults
   p->context_switches = 0;
@@ -276,6 +529,8 @@ freeproc(struct proc *p)
   p->context_switches = 0;
   p->slice_ticks = 0;
   p->waiting_tick = 0;
+  p->eco_background = 0;
+  p->background_deferrals = 0;
 
   //eco scheduler stuff
   p->cpu_ticks = 0;
@@ -406,6 +661,8 @@ kfork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+  np->eco_background = p->eco_background;
+  np->background_deferrals = 0;
 
   pid = np->pid;
 
@@ -533,33 +790,69 @@ kwait(uint64 addr)
 
 //-------------------Quota Stuff---------------------------------------
 
-void
+int
 reset_cpu_quotas(void)
 {
   struct proc *p;
+  int reset_count = 0;
 
   for(p = proc; p < &proc[NPROC]; p++) {
+    int was_throttled = 0;
+    int pid = 0;
+    int used = 0;
+    int quota = 0;
+    int violations = 0;
+    char name[16];
+
     acquire(&p->lock);
     if(p->state != UNUSED) {
+      if(p->throttled){
+        was_throttled = 1;
+        reset_count++;
+        pid = p->pid;
+        used = p->cpu_used_in_window;
+        quota = p->cpu_quota;
+        violations = p->quota_violations;
+        safestrcpy(name, p->name, sizeof(name));
+      }
       p->cpu_used_in_window = 0;
       p->throttled = 0;
     }
     release(&p->lock);
+
+    if(was_throttled){
+      printf("[quota] reset pid=%d (%s): cleared throttle after %d/%d ticks, total hits=%d\n",
+             pid, name, used, quota, violations);
+    }
   }
+
+  return reset_count;
 }
 
 void
 check_and_reset_quota_window(void)
 {
   uint current_ticks;
+  uint previous_start;
+  int reset_count;
 
   acquire(&tickslock);
   current_ticks = ticks;
+  if(current_ticks - quota_window_start < WINDOW_SIZE){
+    release(&tickslock);
+    return;
+  }
+
+  previous_start = quota_window_start;
+  quota_window_start = current_ticks;
   release(&tickslock);
 
-  if(current_ticks - quota_window_start >= WINDOW_SIZE) {
-    quota_window_start = current_ticks;
-    reset_cpu_quotas();
+  reset_count = reset_cpu_quotas();
+  if(reset_count > 0){
+    printf("[quota] window advanced: [%d, %d) -> [%d, %d), reset %d throttled proc(s)\n",
+           previous_start, previous_start + WINDOW_SIZE,
+           current_ticks, current_ticks + WINDOW_SIZE,
+           reset_count);
   }
 }
 
@@ -595,7 +888,8 @@ pick_eco_process(void)
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
 
-    if(p->state == RUNNABLE){
+    if(p->state == RUNNABLE &&
+       (eco_mode != ECO_QUOTA || p->throttled == 0)){
       p->eco_score = compute_eco_score(p);
 
       if(best == 0 ||
@@ -616,6 +910,13 @@ pick_eco_process(void)
   return best;   // if not 0, lock is still held
 }
 
+int
+eco_background_should_yield(struct proc *current)
+{
+  (void)current;
+  return 0;
+}
+
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -628,12 +929,11 @@ void
 scheduler(void)
 {
   struct proc *chosen;
-  struct proc *p;
   struct cpu *c = mycpu();
   static int last_index = 0;
   int start;
-  int offset;
 
+  eco_idle_mark_cpu(cpuid());
   c->proc = 0;
   for(;;){
     intr_on();
@@ -651,24 +951,19 @@ scheduler(void)
       // Baseline path: rotate the scan start so RUNNABLE processes
       // take turns instead of always favoring the earliest slot.
       start = last_index;
-      for(offset = 0; offset < NPROC; offset++){
-        p = &proc[(start + offset) % NPROC];
-        acquire(&p->lock);
-        if(p->state == RUNNABLE &&
-           (eco_mode != ECO_QUOTA || p->throttled == 0)){
-          chosen = p;
-          last_index = ((int)(p - proc) + 1) % NPROC;
-          break;   // keep lock held
-        }
-        release(&p->lock);
-      }
+      if(eco_mode == ECO_OFF)
+        chosen = pick_round_robin_process_eco(start, &last_index);
+      else
+        chosen = pick_round_robin_process(start, &last_index);
     }
 
     if(chosen == 0){
+      eco_idle_enter(cpuid());
       asm volatile("wfi");
       continue;
     }
 
+    eco_idle_exit(cpuid());
     chosen->times_scheduled++;
     
 

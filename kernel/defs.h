@@ -9,6 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct eco_stats;
+struct eco_idle_stats;
 
 // bio.c
 void            binit(void);
@@ -99,6 +100,7 @@ void            userinit(void);
 int             kwait(uint64);
 void            wakeup(void*);
 void            yield(void);
+int             eco_background_should_yield(struct proc *);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
@@ -186,7 +188,7 @@ void            virtio_disk_intr(void);
 
 // -------------- Quota Stuff------------------------------
 // quota helpers
-void reset_cpu_quotas(void);
+int reset_cpu_quotas(void);
 void check_and_reset_quota_window(void);
 void update_process_metrics_on_tick(void);
 
@@ -195,6 +197,13 @@ uint64 sys_setquota(void);
 uint64 sys_getecostats(void);
 uint64 sys_setecomode(void);
 uint64 sys_getecomode(void);
+uint64 sys_getecoidlestats(void);
+uint64 sys_resetecoidle(void);
+uint64 sys_setbackground(void);
+
+// eco idle helpers
+void get_eco_idle_stats(struct eco_idle_stats *);
+void reset_eco_idle_stats(void);
 
 // globals from trap.c if needed
 extern uint ticks;

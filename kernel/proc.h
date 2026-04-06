@@ -112,6 +112,8 @@ struct proc {
   int cpu_used_in_window;   // ticks used in current window
   int throttled;            // 1 if process exceeded quota
   int quota_violations;     // number of times quota was exceeded
+  int eco_background;       // 1 if process is marked as deferrable background work
+  int background_deferrals; // number of scheduler skips due to idle-pressure deferral
   int context_switches;      //number of times CPU control transfered from scheduler to a process (process dispatched from scheduler)
   int slice_ticks;          //how long process has been holding cpu since scheduled
 

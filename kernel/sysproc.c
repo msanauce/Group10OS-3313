@@ -167,8 +167,17 @@ sys_getecostats(void)
   stats.cpu_used_in_window = p->cpu_used_in_window;
   stats.throttled = p->throttled;
   stats.quota_violations = p->quota_violations;
+  stats.eco_background = p->eco_background;
+  stats.background_deferrals = p->background_deferrals;
   stats.waiting_tick = p->waiting_tick;
   stats.context_switches = p->context_switches;
+  stats.cpu_ticks = p->cpu_ticks;
+  stats.sleep_ticks = p->sleep_ticks;
+  stats.runnable_ticks = p->runnable_ticks;
+  stats.times_scheduled = p->times_scheduled;
+  stats.wakeup_count = p->wakeup_count;
+  stats.short_sleep_count = p->short_sleep_count;
+  stats.eco_score = p->eco_score;
   release(&p->lock);
 
   // Sleep-stretch metrics are global for demo simplicity, so every process
@@ -202,4 +211,44 @@ uint64
 sys_getecomode(void)
 {
   return eco_mode;
+}
+
+uint64
+sys_getecoidlestats(void)
+{
+  uint64 addr;
+  struct proc *p = myproc();
+  struct eco_idle_stats stats;
+
+  argaddr(0, &addr);
+  get_eco_idle_stats(&stats);
+
+  if(copyout(p->pagetable, addr, (char *)&stats, sizeof(stats)) < 0)
+    return -1;
+
+  return 0;
+}
+
+uint64
+sys_resetecoidle(void)
+{
+  reset_eco_idle_stats();
+  return 0;
+}
+
+uint64
+sys_setbackground(void)
+{
+  int enabled;
+  struct proc *p = myproc();
+
+  argint(0, &enabled);
+  if(enabled != 0 && enabled != 1)
+    return -1;
+
+  acquire(&p->lock);
+  p->eco_background = enabled;
+  release(&p->lock);
+
+  return 0;
 }

@@ -25,3 +25,6 @@
 #define SYS_getecostats 24
 #define SYS_setecomode 25
 #define SYS_getecomode 26
+#define SYS_getecoidlestats 27
+#define SYS_resetecoidle 28
+#define SYS_setbackground 29

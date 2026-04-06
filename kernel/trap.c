@@ -100,6 +100,13 @@ usertrap(void)
     // give up the CPU if this is a timer interrupt.
   if(which_dev == 2){
   int should_yield = 1;
+  int quota_throttled = 0;
+  int throttled_pid = 0;
+  int throttled_quota = 0;
+  int throttled_used = 0;
+  int throttled_hits = 0;
+  uint current_ticks = 0;
+  char throttled_name[16];
 
   if(p != 0){
     acquire(&p->lock);
@@ -113,6 +120,12 @@ usertrap(void)
         if(p->cpu_used_in_window >= p->cpu_quota && p->throttled == 0){
           p->throttled = 1;
           p->quota_violations++;
+          quota_throttled = 1;
+          throttled_pid = p->pid;
+          throttled_quota = p->cpu_quota;
+          throttled_used = p->cpu_used_in_window;
+          throttled_hits = p->quota_violations;
+          safestrcpy(throttled_name, p->name, sizeof(throttled_name));
         }
       }
 
@@ -145,6 +158,18 @@ usertrap(void)
 
     release(&p->lock);
   }
+
+  if(quota_throttled){
+    acquire(&tickslock);
+    current_ticks = ticks;
+    release(&tickslock);
+    printf("[quota] throttled pid=%d (%s) at tick %d: used %d/%d ticks in this window, hits=%d\n",
+           throttled_pid, throttled_name, current_ticks,
+           throttled_used, throttled_quota, throttled_hits);
+  }
+
+  if(p != 0 && eco_background_should_yield(p))
+    should_yield = 1;
 
   if(should_yield)
     yield();

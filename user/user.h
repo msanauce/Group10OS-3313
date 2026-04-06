@@ -2,6 +2,7 @@
 
 struct stat;
 struct eco_stats;
+struct eco_idle_stats;
 
 // system calls
 int fork(void);
@@ -30,6 +31,9 @@ int setquota(int); // Quota Stuff
 int getecostats(struct eco_stats *);
 int setecomode(int);
 int getecomode(void);
+int getecoidlestats(struct eco_idle_stats *);
+int resetecoidle(void);
+int setbackground(int);
 
 // ulib.c
 int stat(const char*, struct stat*);

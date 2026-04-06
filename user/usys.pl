@@ -47,3 +47,6 @@ entry("setquota");
 entry("getecostats");
 entry("setecomode");
 entry("getecomode");
+entry("getecoidlestats");
+entry("resetecoidle");
+entry("setbackground");

@@ -144,6 +144,32 @@ print_report_table(struct child_report reports[], int count, int configured_star
 }
 
 static void
+print_eco_metrics(struct child_report reports[], int count)
+{
+  int i;
+
+  printf("\ndetailed eco metrics\n");
+
+  for(i = 0; i < count; i++){
+    struct eco_stats *stats = &reports[i].stats;
+
+    printf("child %d pid %d\n", reports[i].child_id, stats->pid);
+    printf("  quota=%d used=%d throttled=%d hits=%d\n",
+           stats->cpu_quota, stats->cpu_used_in_window,
+           stats->throttled, stats->quota_violations);
+    printf("  wait=%d ctxsw=%d cpu=%d sleep=%d runnable=%d\n",
+           stats->waiting_tick, stats->context_switches,
+           stats->cpu_ticks, stats->sleep_ticks,
+           stats->runnable_ticks);
+    printf("  scheduled=%d wakeups=%d short_sleeps=%d score=%d\n",
+           stats->times_scheduled, stats->wakeup_count,
+           stats->short_sleep_count, stats->eco_score);
+    printf("  stretch_calls=%d extra_sleep=%d\n",
+           stats->stretched_sleep_calls, stats->total_extra_sleep_ticks);
+  }
+}
+
+static void
 print_summary(struct child_report reports[], int count, int configured_start)
 {
   int i;
@@ -277,6 +303,7 @@ main(int argc, char *argv[])
   }
 
   print_report_table(reports, nchildren, start_tick);
+  print_eco_metrics(reports, nchildren);
   print_summary(reports, nchildren, start_tick);
 
   printf("\nquota_test complete\n");
