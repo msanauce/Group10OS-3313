@@ -18,9 +18,11 @@ main(void)
   struct eco_stats stats;
   int i;
 
-  for(i = 0; i < 8; i++){
+  printf("burst start\n");
+
+  for(i = 0; i < 3; i++){
     cpu_burst(1);
-    pause(6);
+    pause(1);
   }
 
   if(getecostats(&stats) == 0){

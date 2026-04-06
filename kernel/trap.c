@@ -80,8 +80,7 @@ usertrap(void)
   if(killed(p))
     kexit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  /*if(which_dev == 2){
+  if(which_dev == 2){
     if(eco_mode == ECO_QUOTA && p != 0){
       acquire(&p->lock);
       if(p->state == RUNNING){
@@ -90,90 +89,40 @@ usertrap(void)
         if(p->cpu_used_in_window >= p->cpu_quota && p->throttled == 0){
           p->throttled = 1;
           p->quota_violations++;
+          printf("[quota] throttled pid=%d (%s): used %d/%d ticks, hits=%d\n",
+                 p->pid, p->name, p->cpu_used_in_window, p->cpu_quota,
+                 p->quota_violations);
         }
       }
       release(&p->lock);
-    }
+      yield();
+    } else if(eco_mode == ECO_CONTEXTSW && p != 0){
+      int should_yield = 1;
 
-    yield();
-  }*/
-    // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2){
-  int should_yield = 1;
-  int quota_throttled = 0;
-  int throttled_pid = 0;
-  int throttled_quota = 0;
-  int throttled_used = 0;
-  int throttled_hits = 0;
-  uint current_ticks = 0;
-  char throttled_name[16];
-
-  if(p != 0){
-    acquire(&p->lock);
-
-    if(p->state == RUNNING){
-
-      // ---- QUOTA ----
-      if(eco_mode == ECO_QUOTA){
-        p->cpu_used_in_window++;
-
-        if(p->cpu_used_in_window >= p->cpu_quota && p->throttled == 0){
-          p->throttled = 1;
-          p->quota_violations++;
-          quota_throttled = 1;
-          throttled_pid = p->pid;
-          throttled_quota = p->cpu_quota;
-          throttled_used = p->cpu_used_in_window;
-          throttled_hits = p->quota_violations;
-          safestrcpy(throttled_name, p->name, sizeof(throttled_name));
-        }
-      }
-
-      // ---- CONTEXT SWITCH MODE ----
-      if(eco_mode == ECO_CONTEXTSW){
-
+      acquire(&p->lock);
+      if(p->state == RUNNING){
         int slice_limit;
 
-        if(p->context_switches > ECO_CHURN_THRESHOLD){
+        if(p->context_switches > ECO_CHURN_THRESHOLD)
           slice_limit = ECO_HIGH_SLICE;
-        } else {
+        else
           slice_limit = ECO_LOW_SLICE;
-        }
 
         p->slice_ticks++;
 
-        if(p->slice_ticks < slice_limit){
+        if(p->slice_ticks < slice_limit)
           should_yield = 0;
-        } else {
+        else
           p->slice_ticks = 0;
-          should_yield = 1;
-        }
-
-      } else {
-        // IMPORTANT: reset when NOT in context mode
-        p->slice_ticks = 0;
-        should_yield = 1;
       }
+      release(&p->lock);
+
+      if(should_yield)
+        yield();
+    } else {
+      yield();
     }
-
-    release(&p->lock);
   }
-
-  if(quota_throttled){
-    acquire(&tickslock);
-    current_ticks = ticks;
-    release(&tickslock);
-    printf("[quota] throttled pid=%d (%s) at tick %d: used %d/%d ticks in this window, hits=%d\n",
-           throttled_pid, throttled_name, current_ticks,
-           throttled_used, throttled_quota, throttled_hits);
-  }
-
-  if(p != 0 && eco_background_should_yield(p))
-    should_yield = 1;
-
-  if(should_yield)
-    yield();
-}
 
   prepare_return();
 
@@ -260,6 +209,9 @@ clockintr()
     ticks++;
     wakeup(&ticks);
     release(&tickslock);
+    // Sample process states after the tick advances but outside tickslock.
+    // This avoids lock-order inversion with sleep(), which takes p->lock
+    // before touching ticks-related state.
     update_process_metrics_on_tick();
   }
 

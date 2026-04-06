@@ -350,8 +350,6 @@ update_process_metrics_on_tick(void)
     acquire(&p->lock);
     if(p->state == RUNNING)
       p->cpu_ticks++;
-    else if(p->state == SLEEPING)
-      p->sleep_ticks++;
     else if(p->state == RUNNABLE){
       p->runnable_ticks++;
       p->waiting_tick++;
@@ -881,30 +879,43 @@ pick_eco_process(void)
 {
   struct proc *p;
   struct proc *best = 0;
+  int best_score = -1;
+  uint best_times_scheduled = 0;
 
   for(p = proc; p < &proc[NPROC]; p++){
+    int score;
+
     acquire(&p->lock);
 
     if(p->state == RUNNABLE &&
        (eco_mode != ECO_QUOTA || p->throttled == 0)){
-      p->eco_score = compute_eco_score(p);
+      score = compute_eco_score(p);
+      p->eco_score = score;
 
       if(best == 0 ||
-         p->eco_score > best->eco_score ||
-         (p->eco_score == best->eco_score &&
-          p->times_scheduled < best->times_scheduled)){
-        if(best != 0)
-          release(&best->lock);
-        best = p;   // keep this lock
-      } else {
-        release(&p->lock);
+         score > best_score ||
+         (score == best_score &&
+          p->times_scheduled < best_times_scheduled)){
+        best = p;
+        best_score = score;
+        best_times_scheduled = p->times_scheduled;
       }
-    } else {
-      release(&p->lock);
     }
+
+    release(&p->lock);
   }
 
-  return best;   // if not 0, lock is still held
+  if(best == 0)
+    return 0;
+
+  acquire(&best->lock);
+  if(best->state == RUNNABLE &&
+     (eco_mode != ECO_QUOTA || best->throttled == 0)){
+    best->eco_score = compute_eco_score(best);
+    return best;   // lock is held
+  }
+  release(&best->lock);
+  return 0;
 }
 
 int
@@ -1106,6 +1117,7 @@ wakeup(void *chan)
         // from clockintr(), so don't re-acquire it here.
         uint duration = ticks - p->sleep_start_tick;
 
+        p->sleep_ticks += duration;
         p->wakeup_count++;
         if(duration <= 2)
           p->short_sleep_count++;

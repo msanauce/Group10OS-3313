@@ -8,6 +8,8 @@ main(void)
   struct eco_stats stats;
   volatile unsigned long x = 0;
 
+  printf("hog start\n");
+
   while(x < 900000000UL){
     x++;
   }

@@ -161,6 +161,7 @@ UPROGS=\
 	$U/_bgburn\
 	$U/_hog\
 	$U/_burst\
+	$U/_ecodemo\
 	
 	
 
