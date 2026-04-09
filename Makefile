@@ -156,6 +156,7 @@ UPROGS=\
 	$U/_sleepdemo\
 	$U/_ecostats\
 	$U/_ecoidle\
+	$U/_idlebgdemo\
 	$U/_cpuburn\
 	$U/_bgexec\
 	$U/_bgburn\

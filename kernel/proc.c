@@ -760,7 +760,10 @@ kwait(uint64 addr)
         if(pp->state == ZOMBIE){
           // Found one.
           pid = pp->pid;
-          printf("schedstats: pid=%d waiting_tick=%d\n", pp->pid, pp->waiting_tick);
+          // Suppress orphan-reap noise from init so background jobs don't
+          // look like they froze the shell when they finish asynchronously.
+          if(p != initproc)
+            printf("schedstats: pid=%d waiting_tick=%d\n", pp->pid, pp->waiting_tick);
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
