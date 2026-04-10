@@ -26,8 +26,6 @@ run_child(char *name, int quota)
     exit(1);
   }
 
-  printf("%s: pid=%d quota=%d start\n", name, getpid(), quota);
-
   for(phase = 1; phase <= 6; phase++){
     burn_cpu(8, 12000000);
     printf("%s: pid=%d reached phase %d\n", name, getpid(), phase);
@@ -44,7 +42,7 @@ main(void)
   int status;
 
   printf("quota_test: starting demo\n");
-  printf("quota_test: low quota child should lag behind high quota child\n");
+  printf("quota_test: low quota child (5) should lag behind high quota child (10)\n");
 
   pid1 = fork();
   if(pid1 < 0){
@@ -52,7 +50,7 @@ main(void)
     exit(1);
   }
   if(pid1 == 0){
-    run_child("low_quota", 2);
+    run_child("low_quota", 5);
   }
 
   pid2 = fork();
@@ -63,7 +61,7 @@ main(void)
     exit(1);
   }
   if(pid2 == 0){
-    run_child("high_quota", 12);
+    run_child("high_quota", 10);
   }
 
   wait(&status);
